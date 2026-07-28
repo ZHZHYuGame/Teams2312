@@ -1,7 +1,0 @@
-C:\Users\Administrator\source\repos\Server_2312\Server_2312\bin\Debug\Server_2312.exe.config
-C:\Users\Administrator\source\repos\Server_2312\Server_2312\bin\Debug\Server_2312.exe
-C:\Users\Administrator\source\repos\Server_2312\Server_2312\bin\Debug\Server_2312.pdb
-C:\Users\Administrator\source\repos\Server_2312\Server_2312\obj\Debug\Server_2312.csproj.CoreCompileInputs.cache
-C:\Users\Administrator\source\repos\Server_2312\Server_2312\obj\Debug\Server_2312.exe
-C:\Users\Administrator\source\repos\Server_2312\Server_2312\obj\Debug\Server_2312.pdb
-C:\Users\Administrator\source\repos\Server_2312\Server_2312\obj\Debug\Server_2312.csproj.AssemblyReference.cache
