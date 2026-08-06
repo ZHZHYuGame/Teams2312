@@ -1,206 +1,391 @@
-using System;
+ï»¿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
 
 /// <summary>
-/// ÈÈ¸üĞÂ¹ÜÀí
-/// 1°æ±¾ºÅ
-/// 2×ÊÔ´Çåµ¥
-/// 3×ÊÔ´
-/// ×ÊÔ´·şÎñÆ÷ Http
-/// ¿½±´
-/// ÉÏ´«
-/// ÏÂÔØ
+/// çƒ­æ›´æ–°ä¸»é€»è¾‘
+/// æµç¨‹ï¼šæ‹‰å–æœåŠ¡ç«¯ç‰ˆæœ¬å· â†’ å¯¹æ¯”æœ¬åœ° â†’ å…¨é‡æˆ–å·®å¼‚ä¸‹è½½
+/// æ‰€æœ‰èµ„æºç›´æ¥å­˜æ”¾åœ¨persistentDataPathä¸‹ï¼Œä¸é¢å¤–å¥—ç‰ˆæœ¬å·æ–‡ä»¶å¤¹ï¼Œæ–¹ä¾¿è¦†ç›–
 /// </summary>
 public class HotfixMgr : MonoBehaviour
 {
-    /// <summary>
-    /// ×ÊÔ´·şÎñÆ÷µÄµØÖ·(Https://)
-    /// </summary>
-    string res_Sever_Url = "127.0.0.1/TST/";
-    //×ÊÔ´·şÎñÆ÷µÄÓÎÏ·°æ±¾ºÅ
-    Version res_Sever_Version;
-    /// <summary>
-    /// ×ÊÔ´ÏÂÔØ¶ÓÁĞ
-    /// 1.µÚÒ»´Î°²×°ÓÎÏ·±Ø´¥·¢
-    /// 2.Ë«¶Ë°æ±¾²»Ò»ÖÂµÄÇé¿ö±Ø´¥·¢
-    /// </summary>
-    Queue<AssetItem> downLoad_Asset_Que = new Queue<AssetItem>();
-    void Start()
-    {
-        DownLoad_SeverVersion();
-    }
-    /// <summary>
-    /// ÏÂÔØ·şÎñÆ÷°æ±¾ºÅ
-    /// </summary>
-    void DownLoad_SeverVersion()
-    {
-        //×ÊÔ´·şÎñÆ÷°æ±¾ºÅÎÄ¼şµØÖ·
-        string version = res_Sever_Url + "Version.txt";
-        //ÎÄ¼şÏÂÔØ»Øµ÷
-        StartCoroutine(DownLoad_Url_To_Local(version, (data) =>
-        {
-            //·şÎñÆ÷°æ±¾ºÅ(×îĞÂ)
-            //¼ÇÂ¼×ÊÔ´·şÎñÆ÷°æ±¾ºÅÊı¾İ
-            string s_Version = Encoding.UTF8.GetString(data);
-            res_Sever_Version = new Version(s_Version);
-            //·şÎñÆ÷°æ±¾ºÅ(×îĞÂ)
+    [SerializeField] private string res_Server_Url = "http://127.0.0.1/TST/";
+    private Version res_Server_Version;
+    private Queue<AssetItem> downLoad_Asset_Que = new Queue<AssetItem>();
+    private string resList_ConfigStr;
+    private const int MAX_RETRY = 3;   // å•æ–‡ä»¶ä¸‹è½½å¤±è´¥é‡è¯•æ¬¡æ•°
 
-            //±¾µØ°æ±¾ºÅ(×îÇ°Íæ¼Ò×Ô¼ºÉè±¸¶Ë×îĞÂ)
-            //±¾µØ²»º¬ÓĞ°æ±¾ºÅÎÄ¼ş¼ĞÊ±,ÎªÊ×´Î°²×°,ĞèÒªÈ«²¿ÏÂÔØ
-            if (!File.Exists(Application.persistentDataPath + "/Version.txt"))
+    private void Start()
+    {
+        // å¯åŠ¨å°±æ£€æŸ¥æ›´æ–°ï¼Œå®é™…é¡¹ç›®å¯èƒ½åŠ ä¸ªUIè¿‡æ¸¡
+        DownLoad_ServerVersion();
+    }
+
+    /// <summary>
+    /// ç¬¬ä¸€æ­¥ï¼šè·å–æœåŠ¡å™¨ç‰ˆæœ¬å·
+    /// å¦‚æœæœ¬åœ°æ²¡æœ‰ç‰ˆæœ¬æ–‡ä»¶ï¼Œåˆ™è§†ä¸ºé¦–æ¬¡å®‰è£…ï¼Œå…¨é‡ä¸‹è½½
+    /// </summary>
+    private void DownLoad_ServerVersion()
+    {
+        string versionUrl = res_Server_Url + "Version.txt";
+        StartCoroutine(DownLoad_Url_To_Local(versionUrl, (data) =>
+        {
+            if (data == null || data.Length == 0)
+            {
+                Debug.LogError("æœåŠ¡å™¨ç‰ˆæœ¬æ–‡ä»¶ä¸‹è½½å¤±è´¥æˆ–ä¸ºç©º");
+                return;
+            }
+
+            string s_Version = Encoding.UTF8.GetString(data).Trim();
+            try
+            {
+                res_Server_Version = new Version(s_Version);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"ç‰ˆæœ¬è§£æå¤±è´¥: {s_Version}, é”™è¯¯: {e.Message}");
+                return;
+            }
+
+            string localVersionPath = Application.persistentDataPath + "/Version.txt";
+            if (!File.Exists(localVersionPath))
             {
                 Game_AllRes_DownLoad();
                 return;
             }
-            string local_Version_Str = File.ReadAllText(Application.persistentDataPath + "/Version.text");
-            Version local_Version = new Version(local_Version_Str);
-            //±¾µØ°æ±¾ºÅ(×îÇ°Íæ¼Ò×Ô¼ºÉè±¸¶Ë×îĞÂ)
 
-            //´ó°æ±¾ºÅ(µÚÒ»´ÎÓÎÏ·°²×°,ĞèÏÂÔØËùÓĞ×ÊÔ´·şÎñÆ÷µÄÓÎÏ·×ÊÔ´(¸ù¾İ×ÊÔ´Çåµ¥))
-            if (res_Sever_Version.big > local_Version.big)
+            string local_Version_Str = File.ReadAllText(localVersionPath).Trim();
+            Version local_Version;
+            try
             {
-                //Æ½Ì¨ Ó¦ÓÃ±¦
+                local_Version = new Version(local_Version_Str);
+            }
+            catch
+            {
+                // æœ¬åœ°ç‰ˆæœ¬æŸåï¼Œç›´æ¥å½“ä½œé¦–æ¬¡å®‰è£…
                 Game_AllRes_DownLoad();
+                return;
             }
-            else
+
+            // ç‰ˆæœ¬ç›¸åŒæˆ–æ›´å°ï¼Œæ— éœ€æ›´æ–°
+            if (res_Server_Version.CompareTo(local_Version) <= 0)
             {
-                //ÖĞ°æ±¾¸üĞÂ
-                if (res_Sever_Version.middle > local_Version.middle)
-                {
-                    //½øÈëÓÎÏ·ÖĞÅĞ¶Ï¸üĞÂ,µ«ÊÇ¸üĞÂÍêĞèÒªÖØĞÂµÇÂ¼
-                }
-                else
-                {
-                    //Ğ¡°æ±¾¸üĞÂ
-                    if (res_Sever_Version.small > local_Version.small)
-                    {
-                        //½øÈëÓÎÏ·ÖĞÅĞ¶Ï¸üĞÂ,ÏÂÔØÍêÖ±½Ó½øÈëÓÎÏ·
-                    }
-                }
+                Debug.Log("å·²æ˜¯æœ€æ–°ç‰ˆæœ¬ï¼Œè¿›å…¥æ¸¸æˆ");
+                EnterGame();
+                return;
             }
+
+            // å¤§ç‰ˆæœ¬ï¼ˆé¦–ä½å˜åŒ–ï¼‰ç›´æ¥å…¨é‡ï¼Œå¦åˆ™å·®å¼‚æ›´æ–°
+            // ä¸­ç‰ˆæœ¬æ›´æ–°åå»ºè®®é‡å¯ï¼Œå°ç‰ˆæœ¬å¯ä»¥ç›´æ¥çƒ­æ›´
+            if (res_Server_Version.big > local_Version.big)
+                Game_AllRes_DownLoad();
+            else
+                Game_Hotfix_Res_DownLoad(needRestart: res_Server_Version.middle > local_Version.middle);
         }));
     }
+
     /// <summary>
-    /// ÓÎÏ·ËùÓĞ×ÊÔ´ÏÂÔØ
+    /// å…¨é‡ä¸‹è½½ï¼šä¸‹è½½å®Œæ•´æ¸…å•ï¼Œç„¶åæŠŠæ‰€æœ‰èµ„æºåŠ å…¥é˜Ÿåˆ—ä¾æ¬¡ä¸‹è½½
     /// </summary>
-    void Game_AllRes_DownLoad()
+    private void Game_AllRes_DownLoad()
     {
-        //µ±Ç°×ÊÔ´·şÎñÆ÷×îĞÂµÄ°æ±¾×ÊÔ´Çåµ¥ÎÄ¼ş
-        string resList_Config_Path = res_Sever_Url + res_Sever_Version.ToString() + "/ResList_Config.txt";
+        string resList_Config_Path = res_Server_Url + "ResList_Config.txt";
         StartCoroutine(DownLoad_Url_To_Local(resList_Config_Path, (data) =>
         {
-            //µ±Ç°°æ±¾µÄ×ÊÔ´Çåµ¥ÎÄ¼şÊı¾İ
-            string resList_ConfigStr = Encoding.UTF8.GetString(data);
-
-            string[] resList = resList_ConfigStr.Trim().Split(new string[] { "\r\n" }, StringSplitOptions.None);
-
-            //½«ËùÓĞ½âÎö³öÀ´µÄ×ÊÔ´ÓÃQueue¼ÇÂ¼,¼ÇÂ¼ºóÏÂÔØ
-            foreach (var res in resList)
+            if (data == null || data.Length == 0)
             {
-                string[] resStrArr = res.Split('|');
-                AssetItem ai = new AssetItem()
-                {
-                    path = resStrArr[0],
-                    md5 = resStrArr[1],
-                };
-                downLoad_Asset_Que.Enqueue(ai);
+                Debug.LogError("æ¸…å•æ–‡ä»¶ä¸‹è½½å¤±è´¥ï¼Œæ£€æŸ¥ç½‘ç»œæˆ–æœåŠ¡å™¨");
+                return;
             }
-            //¿ªÆôÏÂÔØ
-            DownLoad_Asset_Handle(downLoad_Asset_Que.Dequeue());
+
+            resList_ConfigStr = Encoding.UTF8.GetString(data);
+            ParseAndEnqueueAllAssets(resList_ConfigStr);
+            StartCoroutine(DownloadQueueCoroutine());
         }));
     }
 
     /// <summary>
-    /// ¾ßÌåÏÂÔØÄ³¸öAsset(Ab)°ü×ÊÔ´µÄ´¦Àí
+    /// å·®å¼‚æ›´æ–°ï¼šå¯¹æ¯”æœ¬åœ°æ¸…å•å’ŒæœåŠ¡ç«¯æ¸…å•ï¼Œåªä¸‹è½½æ–°å¢æˆ–MD5å˜åŒ–çš„èµ„æº
+    /// åŒæ—¶åˆ é™¤æœ¬åœ°å¤šä½™çš„æ–‡ä»¶ï¼ˆæœåŠ¡å™¨å·²åºŸå¼ƒï¼‰
     /// </summary>
-    /// <param name="aItem"></param>
-    void DownLoad_Asset_Handle(AssetItem aItem)
+    /// <param name="needRestart">ä¸­ç‰ˆæœ¬ä»¥ä¸Šéœ€è¦é‡å¯æ¸¸æˆ</param>
+    private void Game_Hotfix_Res_DownLoad(bool needRestart)
     {
-        //  string asset_Path= res_Sever_Url + res_Sever_Version.ToString() + aItem.path;
-        string asset_Path = res_Sever_Url + aItem.path;
-        StartCoroutine(DownLoad_Url_To_Local(asset_Path, (data) =>
+        string resList_Config_Path = res_Server_Url + "ResList_Config.txt";
+        StartCoroutine(DownLoad_Url_To_Local(resList_Config_Path, (data) =>
         {
-
-            string local_Asset_Path = Application.persistentDataPath + "/" + aItem.path;
-            //±¾µØµÄ×ÊÔ´ÏÂÔØÓë¸üĞÂ
-            if (File.Exists(local_Asset_Path))
+            if (data == null || data.Length == 0)
             {
-                File.Delete(local_Asset_Path);
+                Debug.LogError("æ¸…å•æ–‡ä»¶ä¸‹è½½å¤±è´¥");
+                return;
             }
 
-            //ÅĞ¶ÏÊÇ·ñÈ±ÉÙ×ÊÔ´Â·¾¶ÖĞµÄÎÄ¼ş¼Ğ,²»´æÔÚÄÄ¸ö¾Í´´½¨ÄÄ¸ö
-            if (!Directory.Exists(Path.GetDirectoryName(local_Asset_Path)))
+            resList_ConfigStr = Encoding.UTF8.GetString(data);
+            Dictionary<string, AssetItem> serverDict = Get_Res_AssetItems(resList_ConfigStr);
+
+            string localPath = Application.persistentDataPath + "/ResList_Config.txt";
+            Dictionary<string, AssetItem> localDict = new Dictionary<string, AssetItem>();
+            if (File.Exists(localPath))
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(local_Asset_Path));
+                string localContent = File.ReadAllText(localPath);
+                localDict = Get_Res_AssetItems(localContent);
             }
-            //ÓÃ×Ö½ÚÁ÷Ğ´µ½¶ÔÓ¦ÉèÖÃµÄÎ»ÖÃ
-            File.WriteAllBytes(local_Asset_Path, data);
-            if (downLoad_Asset_Que.Count > 0)
+
+            Compare_Server_And_Local_Res_To_Queue(serverDict, localDict);
+
+            if (downLoad_Asset_Que.Count == 0)
             {
-                DownLoad_Asset_Handle(downLoad_Asset_Que.Dequeue());
+                Debug.Log("æ— å·®å¼‚èµ„æºï¼Œç›´æ¥è¿›å…¥æ¸¸æˆ");
+                Save_GameVersion();
+                Save_GameResList_Config();
+                if (needRestart)
+                    Debug.Log("ä¸­ç‰ˆæœ¬æ›´æ–°å®Œæˆï¼Œå»ºè®®é‡å¯æ¸¸æˆ");
+                else
+                    EnterGame();
+                return;
+            }
+
+            StartCoroutine(DownloadQueueCoroutine(needRestart));
+        }));
+    }
+
+    /// <summary>
+    /// è§£ææ¸…å•å­—ç¬¦ä¸²ï¼Œå…¨é‡åŠ å…¥é˜Ÿåˆ—ï¼ˆç”¨äºé¦–æ¬¡å®‰è£…ï¼‰
+    /// </summary>
+    private void ParseAndEnqueueAllAssets(string resStr)
+    {
+        string[] resList = resStr.Trim().Split(new string[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var res in resList)
+        {
+            string[] parts = res.Split('|');
+            if (parts.Length != 2) continue;
+            downLoad_Asset_Que.Enqueue(new AssetItem { path = parts[0], md5 = parts[1] });
+        }
+    }
+
+    /// <summary>
+    /// å°†æ¸…å•å­—ç¬¦ä¸²è½¬ä¸ºå­—å…¸ï¼Œkeyä¸ºç›¸å¯¹è·¯å¾„ï¼Œæ–¹ä¾¿å¯¹æ¯”
+    /// </summary>
+    private Dictionary<string, AssetItem> Get_Res_AssetItems(string resStr)
+    {
+        Dictionary<string, AssetItem> dict = new Dictionary<string, AssetItem>();
+        string[] resList = resStr.Trim().Split(new string[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var res in resList)
+        {
+            string[] parts = res.Split('|');
+            if (parts.Length != 2) continue;
+            dict[parts[0]] = new AssetItem { path = parts[0], md5 = parts[1] };
+        }
+        return dict;
+    }
+
+    /// <summary>
+    /// åŒç«¯å¯¹æ¯”ï¼š
+    /// 1. æœåŠ¡ç«¯æœ‰ä½†æœ¬åœ°æ²¡æœ‰ â†’ ä¸‹è½½
+    /// 2. æœåŠ¡ç«¯MD5ä¸æœ¬åœ°ä¸åŒ â†’ ä¸‹è½½ï¼ˆè¦†ç›–ï¼‰
+    /// 3. æœ¬åœ°æœ‰ä½†æœåŠ¡ç«¯æ²¡æœ‰ â†’ åˆ é™¤
+    /// </summary>
+    private void Compare_Server_And_Local_Res_To_Queue(Dictionary<string, AssetItem> serverDict, Dictionary<string, AssetItem> localDict)
+    {
+        foreach (var kv in serverDict)
+        {
+            if (localDict.TryGetValue(kv.Key, out AssetItem localItem))
+            {
+                if (kv.Value.md5 != localItem.md5)
+                    downLoad_Asset_Que.Enqueue(kv.Value);
+            }
+            else
+                downLoad_Asset_Que.Enqueue(kv.Value);
+        }
+
+        foreach (var kv in localDict)
+        {
+            if (!serverDict.ContainsKey(kv.Key))
+            {
+                string fullPath = Application.persistentDataPath + "/" + kv.Key;
+                if (File.Exists(fullPath))
+                {
+                    File.Delete(fullPath);
+                    Debug.Log($"åˆ é™¤å¤šä½™æœ¬åœ°èµ„æº: {kv.Key}");
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// é˜Ÿåˆ—ä¸‹è½½åç¨‹ï¼Œé€ä¸ªä¸‹è½½ï¼Œå…¨éƒ¨å®Œæˆåä¿å­˜ç‰ˆæœ¬å’Œæ¸…å•
+    /// </summary>
+    private IEnumerator DownloadQueueCoroutine(bool needRestart = false)
+    {
+        while (downLoad_Asset_Que.Count > 0)
+        {
+            AssetItem item = downLoad_Asset_Que.Dequeue();
+            yield return StartCoroutine(DownloadSingleAsset(item));
+        }
+
+        Save_GameVersion();
+        Save_GameResList_Config();
+        Debug.Log("æ‰€æœ‰èµ„æºä¸‹è½½å®Œæˆ");
+
+        if (needRestart)
+            Debug.Log("ä¸­ç‰ˆæœ¬æ›´æ–°å®Œæˆï¼Œè¯·é‡å¯æ¸¸æˆ");
+        else
+            EnterGame();
+    }
+
+    /// <summary>
+    /// å•ä¸ªèµ„æºä¸‹è½½ï¼ŒåŒ…å«é‡è¯•å’ŒMD5æ ¡éªŒ
+    /// é‡è¯•æ¬¡æ•°ç”¨å°½ä»å¤±è´¥åˆ™æŠ¥é”™ï¼Œä½†ä¸ä¼šé˜»å¡åé¢çš„èµ„æºï¼ˆå®é™…é¡¹ç›®å¯åšè¡¥å¿ï¼‰
+    /// </summary>
+    private IEnumerator DownloadSingleAsset(AssetItem item)
+    {
+        string assetUrl = res_Server_Url + item.path;   // ç›´æ¥æ‹¼æ¥ï¼Œä¸å¸¦ç‰ˆæœ¬å·
+        string localPath = Application.persistentDataPath + "/" + item.path;
+        int retry = 0;
+        bool success = false;
+
+        while (retry < MAX_RETRY && !success)
+        {
+            retry++;
+            Debug.Log($"ä¸‹è½½ ({retry}/{MAX_RETRY}): {assetUrl}");
+
+            byte[] data = null;
+            bool downloadDone = false;
+            StartCoroutine(DownLoad_Url_To_Local(assetUrl, (bytes) =>
+            {
+                data = bytes;
+                downloadDone = true;
+            }));
+
+            yield return new WaitUntil(() => downloadDone);
+
+            if (data == null || data.Length == 0)
+            {
+                Debug.LogWarning($"ä¸‹è½½å¤±è´¥ï¼Œé‡è¯• {retry}/{MAX_RETRY}");
+                continue;
+            }
+
+            string localMd5 = CalculateMD5(data);
+            if (localMd5 != item.md5)
+            {
+                Debug.LogWarning($"MD5æ ¡éªŒå¤±è´¥ï¼ŒæœŸæœ›: {item.md5}, å®é™…: {localMd5}ï¼Œé‡è¯• {retry}/{MAX_RETRY}");
+                continue;
+            }
+
+            try
+            {
+                string dir = Path.GetDirectoryName(localPath);
+                if (!Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+                File.WriteAllBytes(localPath, data);
+                Debug.Log($"ä¸‹è½½æˆåŠŸ: {item.path}");
+                success = true;
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"å†™å…¥æ–‡ä»¶å¤±è´¥: {e.Message}");
+                // å†™å…¥å¤±è´¥ä¸é‡è¯•ï¼Œç›´æ¥é€€å‡ºå¾ªç¯ï¼Œç”±å¤–éƒ¨é€»è¾‘å¤„ç†
+                break;
+            }
+        }
+
+        if (!success)
+            Debug.LogError($"ä¸‹è½½å¤±è´¥è¶…è¿‡æœ€å¤§é‡è¯•: {item.path}");
+    }
+
+    /// <summary>
+    /// æ ¸å¿ƒä¸‹è½½å‡½æ•°ï¼Œä½¿ç”¨UnityWebRequestï¼Œå…¼å®¹HTTP/HTTPS
+    /// æˆåŠŸè¿”å›byte[]ï¼Œå¤±è´¥è¿”å›nullï¼Œç”±ä¸Šå±‚å†³å®šé‡è¯•
+    /// </summary>
+    private IEnumerator DownLoad_Url_To_Local(string res_URL, Action<byte[]> complete)
+    {
+        using (UnityWebRequest u_Web = UnityWebRequest.Get(res_URL))
+        {
+            yield return u_Web.SendWebRequest();
+            if (u_Web.result == UnityWebRequest.Result.Success)
+            {
+                Debug.Log($"ä¸‹è½½æˆåŠŸ: {res_URL}, å¤§å°: {u_Web.downloadHandler.data.Length}");
+                complete?.Invoke(u_Web.downloadHandler.data);
             }
             else
             {
-                //½øÈëÓÎÏ· or ÍË³öÓÎÏ·ÖØÆô
+                Debug.LogError($"ä¸‹è½½å¤±è´¥: {res_URL}\né”™è¯¯: {u_Web.error}\nçŠ¶æ€ç : {u_Web.responseCode}");
+                complete?.Invoke(null);
             }
-        }));
+        }
     }
 
     /// <summary>
-    /// Í¨¹ı·ÃÎÊURLµØÖ·½øĞĞÏÂÔØËùĞè×ÊÔ´
+    /// è®¡ç®—byteæ•°ç»„çš„MD5ï¼Œç”¨äºæ ¡éªŒä¸‹è½½çš„æ–‡ä»¶æ˜¯å¦å®Œæ•´
     /// </summary>
-    /// <param name="res_URL"></param>
-    /// <param name="complete"></param>
-    /// <returns></returns>
-    IEnumerator DownLoad_Url_To_Local(string res_URL, Action<byte[]> complete)
+    private string CalculateMD5(byte[] data)
     {
-        //·ÃÎÊ¶ÔÓ¦µÄ×ÊÔ´·şÎñÆ÷
-        UnityWebRequest u_Web = UnityWebRequest.Get(res_URL);
-        //·ÃÎÊ½á¹û
-        UnityWebRequestAsyncOperation op = u_Web.SendWebRequest();
-        //Ñ¯ÎÊÊÇ·ñ·ÃÎÊ³É¹¦
-        if (op.isDone)
+        using (MD5 md5 = MD5.Create())
         {
-            complete?.Invoke(u_Web.downloadHandler.data);
+            byte[] hash = md5.ComputeHash(data);
+            StringBuilder sb = new StringBuilder();
+            foreach (byte b in hash)
+                sb.Append(b.ToString("x2"));
+            return sb.ToString();
         }
-        yield return null;
     }
 
-    // Update is called once per frame
-    void Update()
+    private void Save_GameVersion()
     {
+        File.WriteAllText(Application.persistentDataPath + "/Version.txt", res_Server_Version.ToString());
+    }
 
+    private void Save_GameResList_Config()
+    {
+        File.WriteAllText(Application.persistentDataPath + "/ResList_Config.txt", resList_ConfigStr);
+    }
+
+    private void EnterGame()
+    {
+        Debug.Log("è¿›å…¥æ¸¸æˆ...");
+        // è¿™é‡ŒåŠ è½½ä¸»åœºæ™¯æˆ–è€…é€šçŸ¥å…¶ä»–æ¨¡å—
     }
 }
+
 /// <summary>
-/// ÓÎÏ·°æ±¾ºÅ
+/// ç®€å•ç‰ˆæœ¬å·ç±»ï¼Œæ”¯æŒ x.y.z ä¸‰æ®µæ¯”è¾ƒ
+/// å†™è¿™ä¸ªæ˜¯å› ä¸ºä¸æƒ³ä¾èµ–System.Versionçš„é¢å¤–åˆ¤æ–­ï¼Œè‡ªå·±æ§åˆ¶æ›´æ”¾å¿ƒ
 /// </summary>
-public class Version
+public class Version : IComparable<Version>
 {
-    public int big;
-    public int middle;
-    public int small;
+    public int big, middle, small;
+
     public Version(string verStr)
     {
-        string[] vList = verStr.Split('.');
-        big = int.Parse(vList[0]);
-        middle = int.Parse(vList[1]);
-        small = int.Parse(vList[2]);
-
+        if (string.IsNullOrEmpty(verStr))
+            throw new ArgumentException("ç‰ˆæœ¬å­—ç¬¦ä¸²ä¸èƒ½ä¸ºç©º");
+        var parts = verStr.Trim().Split('.');
+        if (parts.Length != 3)
+            throw new FormatException($"ç‰ˆæœ¬æ ¼å¼åº”ä¸º 'x.y.z'ï¼Œå®é™…ä¸º '{verStr}'");
+        if (!int.TryParse(parts[0], out big) ||
+            !int.TryParse(parts[1], out middle) ||
+            !int.TryParse(parts[2], out small))
+            throw new FormatException($"ç‰ˆæœ¬åŒ…å«éæ•°å­—å­—ç¬¦: {verStr}");
     }
-    public override string ToString()
+
+    public override string ToString() => $"{big}.{middle}.{small}";
+
+    public int CompareTo(Version other)
     {
-        return big + "." + middle + "." + small;
+        if (other == null) return 1;
+        if (big != other.big) return big.CompareTo(other.big);
+        if (middle != other.middle) return middle.CompareTo(other.middle);
+        return small.CompareTo(other.small);
     }
-
 }
+
 /// <summary>
-/// AB×ÊÔ´ĞÅÏ¢
+/// èµ„æºæ¡ç›®ï¼ŒåŒ…å«è·¯å¾„å’ŒMD5ï¼Œç”¨äºé˜Ÿåˆ—å’Œå­—å…¸å­˜å‚¨
 /// </summary>
 public class AssetItem
 {
