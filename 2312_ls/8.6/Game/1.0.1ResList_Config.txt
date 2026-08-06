@@ -1,0 +1,2 @@
+1.0.1/prefab/cube.u3d|47dfbb7860a66266b7ac36e4ea92fe61
+1.0.1/mat/mat1.u3d|5695d001a5c9ba4eb8c4d4d66250fbfc
